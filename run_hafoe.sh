@@ -1,8 +1,6 @@
 #!/bin/bash
 #SBATCH --mem 20gb
 #SBATCH --output=slurm-%j.log
-#SBATCH --mail-type=BEGIN,END
-#SBATCH --mail-user=tatevik.jalatyan@abi.am
 
 
 ./hafoe.sh \
