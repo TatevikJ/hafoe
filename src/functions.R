@@ -470,7 +470,7 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
     
     # check only the positions having multiple serotypes that need to be resolved
     multiple_idx <- which(lapply(v, length) > 1)
-
+    
     s <- 1
     while(s > 0){
       for (i in multiple_idx){
@@ -495,12 +495,15 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
       
       # update multiple_idx to get rid of unnecessary positions
       multiple_idx <- which(lapply(v, length) > 1)
-
+      
       s <- 0
       for (i in multiple_idx){
+        if (s > 0) 
+        {break}
         if ((i != 1) & (!setequal(v[i], v[i-1]))) {      # need to also check the left neighbor
           s <- s + !isEmpty(intersect(v[[i]], v[[i-1]])) 
-        } else if((i != length(v)) & (!setequal(v[i], v[i+1]) )) { # then the right neighbor
+        } 
+        if((i != length(v)) & (!setequal(v[i], v[i+1]) )) { # then the right neighbor
           s <- s + !isEmpty(intersect(v[[i]], v[[i+1]]))
         } 
       }
