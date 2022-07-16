@@ -64,7 +64,7 @@ for f in $needed_wd/bam/*; do
 
 
     f_name=$(basename "$f" .bam)
-    $samtools_path view $f | cut -f1,3 > $needed_wd/csv/mapped/$f_name.csv;
+    $samtools_path view $f | cut -f1,3,12 > $needed_wd/csv/mapped/$f_name.csv; #-f1,3,12 for AS:i:
 done
 end100=$(date +%s)
 echo -ne "\nRunning...: 100% done\nElapsed Time: $(($end100-$start)) seconds\n"
