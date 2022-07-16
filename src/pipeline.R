@@ -21,27 +21,7 @@ cat("===================================================================\n\n")
 # are not, the missing package(s) will be installed
 # and then loaded.
 
-# First specify the packages of interest
-packages = c("dplyr", "plotly", "ggplot2", "gplots",
-             "microseq", "Biostrings", "stringr", "cowplot", "seqinr")
 
-
-
-# Now load or install&load all
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-
-BiocManager::install("ORFik")
-
-package.check <- lapply(
-  packages,
-  FUN = function(x) {
-    if (!suppressPackageStartupMessages(require(x, character.only = TRUE, quietly = T))) {
-      install.packages(x, dependencies = TRUE)
-      suppressPackageStartupMessages(library(x, character.only = TRUE, quietly = T))
-    }
-  }
-)
 
 
 cat("Following R packages were installed and/or called:\n")
