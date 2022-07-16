@@ -1,21 +1,3 @@
-# First specify the packages of interest
-packages = c("stringr", "seqinr")
-
-# Now load or install&load all
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-
-BiocManager::install("ORFik")
-
-package.check <- lapply(
-  packages,
-  FUN = function(x) {
-    if (!suppressPackageStartupMessages(require(x, character.only = TRUE, quietly = T))) {
-      install.packages(x, dependencies = TRUE)
-      suppressPackageStartupMessages(library(x, character.only = TRUE, quietly = T))
-    }
-  }
-)
 
 # Run this first (before running hafoe) to generate the input files
 dir.create("data_simulation/plots", showWarnings = F)
