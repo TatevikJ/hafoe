@@ -25,9 +25,11 @@ usage="\nProgram:\thafoe
 \n\n\t<-cdhitest>\tcd-hit-est path (optional: hafoe will use the default installation path in the user's directory)
 \n\n\t<-cdhitest2d>\tcd-hit-est-2d path (optional: hafoe will use the default installation path in the user's directory)
 \n\n\t<-clustalo>\tclustalo path (optional: hafoe will use the default installation path in the user's directory)
+\n\n\t<-rlib>\tpath to the directory where newly installed R libraries should be stored (optional: hafoe will create rlib directory in the output directory by default)
 \n\n\t<-readlength>\tread length used for variant description (optional: default is 100)
 \n\n\t<--overlap>\toption directs hafoe to run variant description with overlap (optional)
 \n\n\t<-stepsize>\tstep size used for variant description with overlap (optional: the default is 100)
+\n\n\t<-vd_criterion>\tserotype choosing criterion used for variant description (optional: default is avg)
 \n"
 
 # \n\n\n********      TEST
@@ -204,6 +206,26 @@ while [ $i -lt $n ]; do
 			else
 				let j=$i+1
 				declare stepsize=${!j}	
+			fi
+		;;
+		"-vd_criterion")
+			if [ $[$n-$i] -eq 1 ]; then
+				echo -e "$(tput setaf 1;) \nError: the <-vd_criterion> argument not specified after \"vd_criterion\"$(tput sgr0)"
+				echo -e $usage
+				exit 1	
+			else
+				let j=$i+1
+				declare vd_criterion=${!j}	
+			fi
+		;;
+		"-rlib")
+			if [ $[$n-$i] -eq 1 ]; then
+				echo -e "$(tput setaf 1;) \nError: the <-rlib> argument not specified after \"rlib\"$(tput sgr0)"
+				echo -e $usage
+				exit 1	
+			else
+				let j=$i+1
+				declare rlib=${!j}	
 			fi
 		;;
 		"--explore")
@@ -446,6 +468,16 @@ if [ ! -z $exploreout ]; then
 	fi
 fi
 
+if [ ! -z $rlib ]; then
+	if [ ! -d $rlib ]; then
+		echo -e "$(tput setaf 1;) \nError:\tthe directory $rlib is not a valid directory. Please provide a valid directory. $(tput sgr0)"
+		echo -e $usage
+		exit 1
+	fi
+fi
+
+
+
 
 # try not to overwrite the output file
 if [ -f $out ]; then
@@ -504,6 +536,13 @@ fi
 if [ -z $stepsize ]; then	
 	stepsize=100
 fi
+if [ -z $vd_criterion ]; then	
+	vd_criterion="avg"
+fi
+if [ -z $rlib ]; then	
+  rlib=$out/rlib
+  mkdir $out/rlib
+fi
 
 ############### end of setting configuration parameters ######################
 
@@ -538,6 +577,8 @@ num.proc $proc
 read_length $readlength
 overlap $overlap
 step_size $stepsize
+vd_criterion $vd_criterion
+rlib $rlib
 bzez
 
 

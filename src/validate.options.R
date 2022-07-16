@@ -4,7 +4,6 @@ config.file = args[1]
 
 
 if (length(args) < 1){  
-  #cat("\nUsage: \n\n Rscript pipeline.cmd.R [path.to.config.file]\n\n")
   stop("No config file provided")
 }
 
@@ -94,7 +93,6 @@ set.property.logical <- function(matrix, prop.name, default.value){
 }
 
 
-
 set.property.executable <- function(matrix, prop.name, default.value){
   result = tryCatch({
     matrix[prop.name,1]
@@ -134,6 +132,7 @@ defaults = list(
   num.proc = 3,
   read_length = 100,
   step_size = 100,
+  vd_criterion = "avg",
   scripts.dir = "./",
   bowtie.dir = "../bowtie2-2.1.0/",
   bowtie.build.path = "../bowtie2-2.1.0/bowtie2-build.exe",
@@ -155,6 +154,10 @@ overlap = set.property.logical(config.table, "overlap", defaults$overlap)
 num.proc = set.property.integer(config.table, "num.proc", defaults$num.proc)
 read_length = set.property.integer(config.table, "read_length", defaults$read_length)
 step_size = set.property.integer(config.table, "step_size", defaults$step_size)
+
+vd_criterion = set.property(config.table, "vd_criterion", defaults$vd_criterion)
+
+
 
 
 
@@ -256,6 +259,19 @@ if(is.na(file.info(output.dir)$isdir || !file.info(output.dir)$isdir)){
 }
 
 
+rlib = set.property(config.table, "rlib", file.path(output.dir, "rlib"))
+if(is.na(file.info(rlib)$isdir || !file.info(rlib)$isdir)){
+  dc = dir.create(rlib, showWarnings=F)
+  if (!dc){
+    cat("Warning: could not create output directory", rlib,
+        "results will be kept in default directory",  file.path(output.dir, "rlib"), "\n")
+    rlib = file.path(output.dir, "rlib")
+    dir.create(rlib, showWarnings=F)
+  }
+}
+
+
+
 scripts.dir = set.property(config.table, "scripts.dir", defaults$scripts.dir)
 scripts.dir.set = F
 if (file.exists(file.path(scripts.dir, "pipeline.R")))
@@ -334,11 +350,12 @@ if (config.set) {
   cat("\tchimeric.lib.path =", chimeric.lib.path, "\n")
   cat("\tenriched.path =", enriched.path, "\n")
   cat("\toutput.dir = ", output.dir,"\n")
+  cat("\trlib = ", rlib,"\n")
   cat("\tnum.proc =", num.proc, "\n")
   cat("\tread_length =", read_length, "\n")
   cat("\toverlap =", overlap, "\n")
   cat("\tstep_size =", step_size, "\n")
-  
+  cat("\tvd_criterion =", vd_criterion, "\n")
 
 }
 
