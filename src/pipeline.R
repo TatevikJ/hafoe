@@ -21,10 +21,34 @@ cat("===================================================================\n\n")
 # are not, the missing package(s) will be installed
 # and then loaded.
 
+# First specify the packages of interest
+packages = c("dplyr", "ORFik", "plotly", "ggplot2", "gplots",
+             "microseq", "Biostrings", "stringr", "cowplot", "seqinr")
+
+.libPaths(rlib)
+
+# Now load or install&load all
+if (!suppressPackageStartupMessages(require("BiocManager", quietly = TRUE))){
+  install.packages("BiocManager", lib = rlib)
+}
+
+if (!suppressPackageStartupMessages(require("ORFik", character.only = TRUE, quietly = T))) {
+  BiocManager::install("ORFik",  lib = rlib)
+  suppressPackageStartupMessages(library("ORFik", character.only = TRUE, quietly = T))
+}
+
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!suppressPackageStartupMessages(require(x, character.only = TRUE, quietly = T))) {
+      install.packages(x, dependencies = TRUE, lib = rlib)
+      suppressPackageStartupMessages(library(x, character.only = TRUE, quietly = T))
+    }
+  }
+)
 
 
-
-cat("Following R packages were installed and/or called:\n")
+cat(paste0("Following R packages were installed in ", rlib, " directory and/or called:\n"))
 cat(paste0("\tdplyr: version ", packageVersion("dplyr"), "\n"))
 cat(paste0("\tORFik: version ", packageVersion("ORFik"), "\n"))
 cat(paste0("\tplotly: version ", packageVersion("plotly"), "\n"))
@@ -104,8 +128,8 @@ if (explore) {
   save.image(rdata_name)  
 
   # Chimeric library
-  out_chim <- filter.by.orf(chimeric_library_fa,
-                            chimeric_library_fa.path,
+  out_chim <- filter.by.orf(file = chimeric_library_fa, 
+                            file_path = chimeric_library_fa.path,
                             library_name = "Chimeric")
   fasta_orf_filtered_chim <- out_chim[[1]]
   fasta_orf_seq_filtered_chim <- out_chim[[2]]
@@ -349,7 +373,8 @@ if (explore) {
                    read_length = read_length,
                    library_name = "chimeric_lib_representatives",
                    overlap = overlap,
-                   step_size = step_size)
+                   step_size = step_size, 
+                   vd_criterion = "avg")
 
   
 
@@ -489,11 +514,11 @@ if (explore) {
     save.image(rdata_name)
     
     out <- filter.enriched.reduced.reps(counts_file_path = file.path(output.dir, "files/counts.csv"),
-                                                   output_path = file.path(output.dir, "files"),
-                                                   reduced_chim_thresh = 0.1,
-                                                   reduced_ratio_thresh = 1,
-                                                   enriched_chim_thresh = 0.5,
-                                                   enriched_ratio_thresh = 1)
+                                        output_path = file.path(output.dir, "files"),
+                                        reduced_chim_thresh = 0.1,
+                                        reduced_ratio_thresh = 1,
+                                        enriched_en1_thresh = 0.1,
+                                        enriched_ratio_thresh = 1)
     enriched = out[[1]]
     reduced = out[[2]]
     

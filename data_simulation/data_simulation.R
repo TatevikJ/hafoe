@@ -1,12 +1,38 @@
+# First specify the packages of interest
+packages = c("stringr", "seqinr")
+
+# Now load or install&load all
+if (!suppressPackageStartupMessages(require("BiocManager", quietly = TRUE))){
+  install.packages("BiocManager", lib = rlib)
+}
+
+if (!suppressPackageStartupMessages(require("ORFik", character.only = TRUE, quietly = T))) {
+  BiocManager::install("ORFik",  lib = rlib)
+  suppressPackageStartupMessages(library("ORFik", character.only = TRUE, quietly = T))
+}
+
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!suppressPackageStartupMessages(require(x, character.only = TRUE, quietly = T))) {
+      install.packages(x, dependencies = TRUE)
+      suppressPackageStartupMessages(library(x, character.only = TRUE, quietly = T))
+    }
+  }
+)
 
 # Run this first (before running hafoe) to generate the input files
+
+library(seqinr)
+library(stringr)
+
 dir.create("data_simulation/plots", showWarnings = F)
 fileName <- "input_files/AAV_all16_new.clustal_num"
 format <- "clustal"
-
+seed <- 1
 alignment <- seqinr::read.alignment(fileName, format = format, forceToLower = F)
 
-set.seed(1)
+set.seed(seed)
 reads_num <- 300
 aav_num <- alignment$nb
 fragment_size_min <- 100 
@@ -53,6 +79,8 @@ while(i <= reads_num){
     sero_idx <- sample(biased_aav_nums, 1, replace=T)  #1:aav_num uniform
     #choose random cut position
     cut <- sample((cursor + fragment_size_min) : (cursor + fragment_size_max), 1, replace=F) #cursor:aln_len
+    
+    #!!!remove this
     #to reduce diversity make limitation on cut positions to be divisible by 10 
     while (cut %% 100 != 0){
       cut <- sample((cursor + fragment_size_min) : (cursor + fragment_size_max), 1, replace=F)
@@ -95,6 +123,7 @@ while(i <= reads_num){
 
 df <- data.frame(chimeric_seq = seqs,
                  composition = seq_labels)
+set.seed(seed)
 df['count'] <- sample(1:50, reads_num, replace = T)
 
 save.image("./data_simulation/data_simulation.RData")
@@ -120,9 +149,10 @@ write.csv(chimeric_library, "input_files/Chimeric_lib_simulated.csv", row.names 
 
 
 #ENRICHED
-set.seed(1)
+set.seed(seed)
 x0 <- rnorm(1000, mean = -1, sd = 0.5)
 x <- x0[x0 >= -1]
+set.seed(seed)
 x <- sample(x, 300)
 x <- round(x, 2)
 
