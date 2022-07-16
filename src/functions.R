@@ -61,12 +61,12 @@ filter.by.orf <- function(file, file_path, min_orf = 600, max_seq = 3000, format
   if (length(neg) > 0){
   #Get sequences
     gr_neg <- unlist(neg, use.names = TRUE)
-    gr_neg <- GRanges(seqnames = names(dna_rc)[as.integer(names(gr_neg))], ranges(gr_neg), strand = "-")
+    gr_neg <- GRanges(seqnames = names(dna_rc)[as.integer(names(gr_neg))], ranges(gr_neg), strand = "+") #strand = "+" to get ORFs instead of ORF_rc
     names(gr_neg) <- make.names(gr_neg@ranges@NAMES, unique=TRUE)
     gr_neg_df <- as.data.frame(gr_neg)
     #Give proper names: 
     names(gr_neg) <- paste0(gr_neg_df$seqnames, "/", "ORF/", gr_neg_df$start, "-", gr_neg_df$end, "/", gr_neg_df$width, "/-")
-    orf_seq_neg <- getSeq(dna_rc, gr_neg)
+    orf_seq_neg <- Biostrings::getSeq(dna_rc, gr_neg)
     
     orf_info_df_neg <- as.data.frame(gr_neg)
     orf_seq_df_neg <- as.data.frame(orf_seq_neg)
@@ -110,9 +110,10 @@ filter.by.orf <- function(file, file_path, min_orf = 600, max_seq = 3000, format
   if (format == "fastq"){
     #Add sequence original name, orf start, end positions as columns
     orf_seq_df_all_max$name_original <- sub("/ORF.*", "", orf_seq_df_all_max$name)
-    ranges <- str_split(orf_seq_df_all_max$name, pattern = "/", simplify = TRUE)[,3]  #[,5]
-    start <- str_split(ranges, pattern = "-", simplify = TRUE)[,1]
-    end <- str_split(ranges, pattern = "-", simplify = TRUE)[,2]
+    name_splitted <- stringr::str_split(orf_seq_df_all_max$name, pattern = "/", simplify = TRUE) 
+    ranges <- apply(name_splitted, 1, FUN=function(x) x[x != ""][length(x[x != ""])-2] )  #[,5]
+    start <- stringr::str_split(ranges, pattern = "-", simplify = TRUE)[,1]
+    end <- stringr::str_split(ranges, pattern = "-", simplify = TRUE)[,2]
     orf_seq_df_all_max['start'] <- start
     orf_seq_df_all_max['end'] <- end
     
@@ -274,7 +275,9 @@ make.fastq.files <- function(read_length, fasta.path, library_name = "", overlap
 
 
 #parents_df change general case from parents fasta or separate input paramenter from .sh
-neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped, read_length, library_name = "", overlap = F, step_size = read_length){
+neighbor.joining <- function(parents_df, path_fasta, path_mapped, 
+                             path_unmapped, read_length, library_name = "", 
+                             overlap = F, step_size = read_length, vd_criterion = "avg"){
   start_time <- Sys.time()
   
   
@@ -292,23 +295,26 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
   dir.create(file.path(output.dir, "files/variant_description", library_name), showWarnings = F)
   
   data <- microseq::readFasta(path_fasta)  
+  data <- data[order(data$Header),] #order data by Header in alphabetical order
   
   #path_mapped - path of directory containing csv files generated from bam files(only mapped reads). 
   #In these csv files there are 2 columns(read name and serotype name)
   
   #list of file names in that directory
   files_mapped <- list.files(path = path_mapped, pattern = "\\.csv$", full.names = FALSE, ignore.case = TRUE)
+  files_mapped <- sort(files_mapped, decreasing = F) #sort names alphabetically
   
   #path_unmapped - path of directory containing csv files generated from fastq files(only unmapped reads). 
   #In these csv files there is 1 column(read name)
   
   #list of file names in that directory
   files_unmapped <- list.files(path = path_unmapped, pattern = "\\.csv$", full.names = FALSE, ignore.case = TRUE)
+  files_unmapped <- sort(files_unmapped, decreasing = F) #sort names alphabetically
   
   files_names <- sub('\\.csv$', '', list.files(path = path_mapped, pattern = "\\.csv$", full.names = FALSE, ignore.case = TRUE))
   #binds these two lists of files by column (resulting 2 column and each row corresponding to one variant). Needed to connect mapped and unmapped files for each variant
   file_pairs = cbind(files_mapped, files_unmapped, files_names)  
-
+  
   isEmpty <- function(x) {
     return(length(x)==0)
   }
@@ -323,24 +329,23 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
   
   #for loop iterating over all query variants' mapped and unmapped files simultaneously 
   for (j in seq_len(nrow(file_pairs))) {
-    
     #there where some empty files in mapped and unmapped files, so I used if/else statements to ignore them
     #MAPPED
     if (file.size(file.path(path_mapped, file_pairs[[j, 1]])) > 0){
       
-      #open csv file, do not use first row as header, use tab to seperate columns. read as matrix
-      data_mapped <- as.matrix(read.csv(file.path(path_mapped, 
-                                                  file_pairs[[j, 1]]), 
+      #open csv file, do not use first row as header, use tab to separate columns. read as matrix
+      data_mapped <- read.csv(file.path(path_mapped, 
+                                        file_pairs[[j, 1]]), 
                                         header = F, 
-                                        sep = "\t"))
+                                        sep = "\t")
       #specify column names of matrix
-      colnames(data_mapped) <- c("variant_read", "serotype")
+      colnames(data_mapped) <- c("variant_read", "serotype", "aln_score") #"aln_score"
+      data_mapped[,"aln_score"] <- gsub(".*:", "", data_mapped[,"aln_score"])
       
-      #extract read numbers from the first column of data_mapped matrix (ex: AAV.100001.1003 --> 3)
-      #read_num <- as.numeric(substring(data_mapped[,1], nchar(data_mapped[,1])-4+1, nchar(data_mapped[,1]))) - 1000
-      read_num <- as.numeric(substring(data_mapped[,1], 
-                                       nchar(data_mapped[,1]) - 5 + 1, 
-                                       nchar(data_mapped[,1]))) - 10000
+      #extract read numbers from the first column of data_mapped matrix (ex: AAV.100001.10003 --> 3)
+      read_num <- as.numeric(substring(data_mapped[,"variant_read"], 
+                                       nchar(data_mapped[,"variant_read"]) - 5 + 1, 
+                                       nchar(data_mapped[,"variant_read"]))) - 10000
       
       #add this list of read numbers to data_mapped matrix as a column
       data_mapped <- cbind(data_mapped, read_num)
@@ -352,43 +357,25 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
     #if file not empty
     if (file.size(file.path(path_unmapped, file_pairs[[j, 2]])) > 0){ 
       #same for unmapped files
-      data_unmapped <- as.matrix(read.csv(file.path(path_unmapped, file_pairs[[j, 2]]), 
+      data_unmapped <- read.csv(file.path(path_unmapped, file_pairs[[j, 2]]), 
                                           header = F, 
-                                          sep = "\t"))  
+                                          sep = "\t")
       
       colnames(data_unmapped) <- c("variant_read")
       
-      #read_num_un <- as.numeric(substring(data_unmapped[,1], nchar(data_unmapped[,1])-4+1, nchar(data_unmapped[,1]))) - 1000
-      read_num_un <- as.numeric(substring(data_unmapped[,1], 
-                                          nchar(data_unmapped[,1])- 5 + 1, 
-                                          nchar(data_unmapped[,1]))) - 10000
+      read_num_un <- as.numeric(substring(data_unmapped[,"variant_read"], 
+                                          nchar(data_unmapped[,"variant_read"])- 5 + 1, 
+                                          nchar(data_unmapped[,"variant_read"]))) - 10000
     } else {
       read_num_un <- c(-1)
     }
     
-    # #empty vector to be filled in the for loop
-    # v = list()
-    # #for loop iterates over read numbers of corresponding variant 
-    # for (i in 1: max(max(read_num), max(read_num_un))) {
-    #   #if the number of reads is present in the read_num list (list for mapped reads)
-    #   if (i %in% read_num) {
-    #     #then the vector v is appended by the serotype number in corresponding position 
-    #     s <- data_mapped[data_mapped[,"read_num"] == i, "serotype"]
-    #     v[[i]] <- parents_df[serotype_name %in% s, "serotype_num"]
-    #     
-    #   }
-    #   #if the number of reads is present in the read_num_un list(list for unmapped reads)
-    #   if (i %in% read_num_un) {
-    #     #then  the vector v is appended by 0 in corresponding position 
-    #     v[[i]] = 0 
-    #   } 
-    # }
-    
 
-    #new
-    variant_length <- nchar(data[j,]$Sequence) #!!! change, order may not be the same
-    v = list()
+    variant_length <- nchar(data[j,]$Sequence) #order for j should be the same in data and file_pairs
+    v <- list()
+    rn <- list()
     for (p in seq_len(variant_length)){
+      rn[p] <- c()
       serotypes_all <- c()
       for (z in 1: max(max(read_num), max(read_num_un))){
         if (p %in% seq(((z-1)*step_size)+1, ((z-1)*step_size)+read_length)){ #read start end positions in variant sequence
@@ -415,9 +402,49 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
           }
           
           v[[p]] <- serotypes_all
+          rn[[p]] <- c(unlist(rn[p]), z)
         }
       }
     }
+    
+    
+    #leave only seros with the best aln score for that read
+    v_max_aln_score <- list()
+
+    #default min score thresh in bowtie2: -0.6 + -0.6 * L , where L is the read length
+    min_score <- round(-0.6 + -0.6 * read_length)
+    data_mapped$read_num <- as.numeric(data_mapped$read_num)
+    data_mapped$aln_score <- as.numeric(data_mapped$aln_score)
+    data_mapped["aln_score_shifted"] <- data_mapped$aln_score + abs(min_score)
+    data_mapped <- merge(data_mapped, parents_df, by.x = 'serotype', by.y ='serotype_name')
+    
+    for (i in seq_len(length(v))){
+      
+      all_reads <- data_mapped[data_mapped$read_num %in% rn[[i]],]
+      #all_reads_max <- all_reads[all_reads$aln_score == max(all_reads$aln_score),]
+      
+      #!!!dplyr package problem, doesn't recognize %>% 
+      try(detach("package:plyr", unload = TRUE), silent = T)
+      library(dplyr)
+      
+      score_sum_per_sero <- all_reads %>% 
+        group_by(serotype_num) %>%
+        summarise(
+          score_sum = sum(aln_score_shifted),
+          score_avg = mean(aln_score_shifted)
+        )
+
+      if (vd_criterion == "sum"){
+        sero_w_max_score <- score_sum_per_sero[score_sum_per_sero$score_sum == max(score_sum_per_sero$score_sum), ]$serotype_num
+      } else if (vd_criterion == "avg"){
+        sero_w_max_score <- score_sum_per_sero[score_sum_per_sero$score_avg == max(score_sum_per_sero$score_avg), ]$serotype_num
+        
+      }
+      
+      v_max_aln_score[[i]] <- sero_w_max_score
+    }
+    
+    v <- v_max_aln_score
     
     # get unique consecutive values from v and lengths of them in a separate vector
     seen <- v[[1]]
@@ -436,89 +463,56 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
     }
     consecutive_counts <- c(consecutive_counts, count)
     
-    # this gives back the list of sequence length
-    #rep(v_consecutive_unique, consecutive_counts)
 
-    
-    ###neighbor joining
-    # v <- v_consecutive_unique
-    # s <- 1
-    # while(s > 0){
-    #   
-    #   for (i in 1:(length(v)-1)){
-    #     #if there is intersect and they are not the same assign   the intersect to both neighbors
-    #     if(!setequal(v[i], v[i+1])){
-    #       if(!isEmpty(intersect(v[[i]], v[[i+1]]))){
-    #         v[[i]] = intersect(v[[i]], v[[i+1]])
-    #         v[[i+1]] = intersect(v[[i]], v[[i+1]])
-    #       }
-    #     }
-    #   }
-    #   
-    #   s <- 0
-    #   for (i in 1:(length(v)-1)){
-    #     if( !setequal(v[i], v[i+1]) ) {
-    #       s <- s + !isEmpty(intersect(v[[i]], v[[i+1]]))
-    #     }
-    #   }
-    # }
-    # 
-    
-    ###neighbor joining
-    #new
+    ###neighbor-aware serotype identification
     v <- v_consecutive_unique
     
     # check only the positions having multiple serotypes that need to be resolved
     multiple_idx <- which(lapply(v, length) > 1)
-    
-    s <- 1
-    while(s > 0){
-      for (i in multiple_idx){
-        #if there is intersect and they are not the same assign the intersect to both neighbors
-        #compare with the left neighbor
-        if((i != 1) & (!setequal(v[i], v[i-1]))){
-          if((!isEmpty(intersect(v[[i]], v[[i-1]])))){
-            intersect_ <- intersect(v[[i]], v[[i-1]])
-            v[[i]] <- intersect_
-            v[[i-1]] <- intersect_
-          }
+
+    for (i in multiple_idx){
+      #if there is intersect and they are not the same assign the intersect to both neighbors
+      #compare with the left neighbor
+      left_intersect <- c()
+      right_intersect <- c()
+      
+      if ((i != 1) & (!setequal(v[i], v[i-1]))){
+        if(!isEmpty(intersect(v[[i]], v[[i-1]]))){
+          left_intersect <- intersect(v[[i]], v[[i-1]])
         }
-        #then compare with the right neighbor
-        if((i != length(v)) & (!setequal(v[i], v[i+1]))){
-          if(!isEmpty(intersect(v[[i]], v[[i+1]]))){
-            intersect_ <- intersect(v[[i]], v[[i+1]])
-            v[[i]] <- intersect_
-            v[[i+1]] <- intersect_
-          }
-        }
+      } else if ((i != 1) & (setequal(v[i], v[i-1]))){
+        left_intersect <- v[[i-1]]
+      } else if (i == 1){
+        left_intersect <- c()
+      }
+      #then compare with the right neighbor
+      if ((i != length(v)) & (!setequal(v[i], v[i+1]))){
+        if (!isEmpty(intersect(v[[i]], v[[i+1]]))){
+          right_intersect <- intersect(v[[i]], v[[i+1]])
+        } 
+      } else if ((i != 1) & (setequal(v[i], v[i+1]))){
+        right_intersect <- v[[i+1]]
+      } else if (i == length(v)){
+        right_intersect <- c()
       }
       
-      # update multiple_idx to get rid of unnecessary positions
-      multiple_idx <- which(lapply(v, length) > 1)
-      
-      s <- 0
-      for (i in multiple_idx){
-        if (s > 0) 
-        {break}
-        if ((i != 1) & (!setequal(v[i], v[i-1]))) {      # need to also check the left neighbor
-          s <- s + !isEmpty(intersect(v[[i]], v[[i-1]])) 
-        } 
-        if((i != length(v)) & (!setequal(v[i], v[i+1]) )) { # then the right neighbor
-          s <- s + !isEmpty(intersect(v[[i]], v[[i+1]]))
-        } 
+      # change only the i-th position, not the neighbors
+      if (!is.null(union(left_intersect, right_intersect))){ #when both left and right intersects are null, v[[i]] shouln't change
+        v[[i]] <- union(left_intersect, right_intersect)
       }
+      
     }
+
+    # make v of sequence length
+    v <- rep(v, consecutive_counts)
     
-    
+    #assign 17 to positions remaining with multiple serotypes
     for (i in 1:length(v)){
       if (length(v[[i]]) > 1){
         v[[i]] <- 17
       }
     }
-    
-    # make v of sequence length
-    v <- rep(v, consecutive_counts)
-    
+
     #after the vector v is made, the empty matrix mat defined above is appended. 1st column is the name of variant,
     #2nd column is a string of serotype numbers separated by spaces
     m[[j, 1]] <- file_pairs[[j, 3]]
@@ -526,13 +520,12 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
     
   }
   
-  end_time <- Sys.time()
-  # end_time - start_time
   
-
+  end_time <- Sys.time()
+  #end_time - start_time
+  
+  
   s <- stringr::str_split(unlist(m[,2], 1), " ")
-  # col_num <- ceiling(max(nchar(data$Sequence))/step_size)
-  #new
   col_num <- max(nchar(data$Sequence))
   for (i in seq_len(length(s))){
     if (length(s[[i]]) < col_num){ 
@@ -551,6 +544,7 @@ neighbor.joining <- function(parents_df, path_fasta, path_mapped, path_unmapped,
               quote = F, 
               col.names = F)
 }
+
 
 
 plot.cluster.size.distribution <- function(cluster_members, size_thresh, library_name = ""){
@@ -693,8 +687,6 @@ get.frequency.table <- function(chimeric_library, nj_matrix, cluster_members, ou
 }
 
 
-
-
 plot.serotype.frequency <- function(serotypes_freq, col_df, library_name = ""){
   serotypes_freq['Name'] <- rownames(serotypes_freq)
   col_ordered <- col_df[serotypes_freq[order(serotypes_freq$`Freq(%)`, decreasing = T), "Name"],]
@@ -806,14 +798,17 @@ plot.top.reps.in.enrichedlib.ggplot <- function(counts_file_path, topn_thresh, l
 }
 
 
-filter.enriched.reduced.reps <- function(counts_file_path, output_path, enriched_chim_thresh, enriched_ratio_thresh, reduced_chim_thresh, reduced_ratio_thresh){
+
+filter.enriched.reduced.reps <- function(counts_file_path, output_path, 
+                                         enriched_chim_thresh = 0, enriched_en1_thresh, enriched_ratio_thresh, 
+                                         reduced_chim_thresh, reduced_en1_thresh = 0, reduced_ratio_thresh){
   counts <- read.csv(counts_file_path)
   
-  enriched <- counts[counts$Chimeric.Percentage >= enriched_chim_thresh & counts$Ratio_En1Chim >= enriched_ratio_thresh,]
+  enriched <- counts[counts$Chimeric.Percentage >= enriched_chim_thresh & counts$Enriched1.Percentage >= enriched_en1_thresh & counts$Ratio_En1Chim >= enriched_ratio_thresh,]
   enriched <- enriched[order(enriched$Ratio_En1Chim, decreasing = T),]
   rownames(enriched) <- NULL
   
-  reduced <- counts[counts$Chimeric.Percentage >= reduced_chim_thresh & counts$Ratio_En1Chim < reduced_ratio_thresh,]
+  reduced <- counts[counts$Chimeric.Percentage >= reduced_chim_thresh & counts$Enriched1.Percentage >= reduced_en1_thresh & counts$Ratio_En1Chim < reduced_ratio_thresh,]
   #reduced <- na.omit(reduced) 
   reduced <- reduced[order(reduced$Ratio_En1Chim, decreasing = T),]
   rownames(reduced) <- NULL
